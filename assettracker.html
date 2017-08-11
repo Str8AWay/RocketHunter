@@ -1,0 +1,281 @@
+
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
+		<title>Asset Tracker</title>
+
+		<!-- Bootstrap -->
+		<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css" integrity="sha512-dTfge/zgoMYpP7QbHy4gWMEGsbsdZeCXz7irItjcC3sPUFtf0kuFbDz/ixG7ArTxmDjLXDmezHubeNikyKGVyQ==" crossorigin="anonymous">
+		<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap-theme.min.css" integrity="sha384-aUGj/X2zp5rLCbBxumKTCw2Z50WgIr1vs/PFN4praOTvYXWlVyh2UtNUU0KAUhAX" crossorigin="anonymous">
+		<!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
+		<!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+		<!--[if lt IE 9]>
+			<script src="https://oss.maxcdn.com/html5shiv/3.7.2/html5shiv.min.js"></script>
+			<script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
+		<![endif]-->
+
+		<style type="text/css">
+			body {
+				padding-top: 50px;
+			}
+			.starter-template {
+				padding: 40px 15px;
+				text-align: center;
+			}
+			#map {
+				height: 600px;
+			}
+		</style>
+	</head>
+	<body>
+		<nav class="navbar navbar-inverse navbar-fixed-top">
+			<div class="container">
+				<div class="navbar-header">
+					<a class="navbar-brand" href="#">Asset Tracker Map</a>
+				</div>
+			</div>
+		</nav>
+
+		<div class="container">
+
+			<div class="starter-template">
+                <div id="spark-login">
+                    <div>Username:</div>
+                    <input type="text" id="username"></input>
+                    <div>Password:</div>
+                    <input type="password" id="password"></input>
+                    <button id="submit">Login</button>
+                </div>
+				<div id="deviceChooser">
+					<form>
+						<select id="deviceSelect"></select>
+					</form>
+				</div>
+                <div id="functions">
+                    <button onclick="transmitMode(1)">Start Transmitting</button>
+                    <button onclick="transmitMode(0)">Stop Transmitting</button>
+                    <div id="functionStatus"></div>
+                </div>
+                <h3>Rocket Location</h3>
+				<div id="map"></div>
+				<div id="latlon">Waiting for GPS events...</div>
+                <h3>Altitude Chart</h3>
+                <canvas id="altitudeChart"></canvas>
+			</div>
+
+		</div><!-- /.container -->
+
+		<!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+		<script src="https://cdn.jsdelivr.net/simplestorage/0.2.0/simpleStorage.min.js"></script>
+		<script type="text/javascript" src="https://cdn.jsdelivr.net/particle-api-js/5/particle.min.js"></script>
+		<!-- Include all compiled plugins (below), or include individual files as needed -->
+		<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js" integrity="sha512-K1qjQ+NcF2TYO/eI3M6v8EiNYZfA95pQumfvcVrTHtwQVDG+aHRqLi/ETn2uB+1JqwYqVG3LIvdm9lj6imS/pQ==" crossorigin="anonymous"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.18.1/moment.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.4.0/Chart.min.js"></script>
+		<script>
+            var particle = new Particle();
+			var accessToken;
+			var deviceId;
+			var map;
+			function initMap() {
+				console.log('map init');
+				map = new google.maps.Map(document.getElementById('map'), {
+					center: {lat: -34.397, lng: 150.644},
+					zoom: 19,
+					mapTypeId: google.maps.MapTypeId.HYBRID
+				});
+			}
+
+            function transmitMode(transmit) {
+                particle.callFunction({
+                    deviceId: deviceId,
+                    name: 'tmode',
+                    argument: transmit,
+                    auth: accessToken
+                }).then(
+                    function(data) {
+                        $('#functionStatus').html('Success');
+                        console.log('Function called successfully', data);
+                    },
+                    function(err) {
+                        $('#functionStatus').html('Failure');
+                        console.log('An error occurred:', err);
+                    }
+                );
+            }
+            
+			$(function(){
+				var device;
+				var gpslocation;
+				var markersArray = [];
+                var chart;
+                var altitudeData = [];
+
+                function initChart() {
+                    var ctx = document.getElementById('altitudeChart').getContext('2d');
+                    chart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            datasets:[{
+                                data: altitudeData,
+                                label: "Big Bertha",
+                                xAxisId: "Time",
+                                yAxisId: "Altitude"
+                            }]
+                        },
+                        options: {
+                            scales: {
+                                xAxes: [{
+                                    display: true,
+                                    scaleLabel: {
+                                        display: true,
+                                        labelString: "Time"
+                                    },
+                                    type: 'time'
+                                }],
+                                yAxes: [{
+                                    display: true,
+                                    scaleLabel: {
+                                        display: true,
+                                        labelString: "Altitude (m)"
+                                    }
+                                }]
+                            }
+                        }
+                    });
+                }
+
+                initChart()
+
+
+				$('#spark-login').hide();
+				$('#deviceChooser').hide();
+                $('#functions').hide();
+				$('#map').hide();
+                $('#altitudeChart').hide();
+
+				$('#deviceSelect').on('change', function(){
+					deviceId = $('#deviceSelect').val();
+					simpleStorage.set("assettracker_deviceId", deviceId);
+					go();
+				});
+
+				$('.btnMove').on('click', function(){
+					var position = $(this).attr('data-pos');
+					var cm = positions[position];
+					console.log('Move to ' + cm);
+					device.callFunction('setHeight', cm, function(err, data) {
+						if (err) {
+							console.log('An error occurred:', err);
+						} else {
+							console.log('Function called succesfully:', data);
+						}
+					});
+				});
+
+				function loadDevice() {
+					deviceId = simpleStorage.get("assettracker_deviceId");
+
+					if (typeof deviceId == 'undefined') {
+						$('#deviceChooser').show();
+						particle.listDevices({ auth: accessToken }).then(
+                            function(data) {
+                                $('#deviceSelect').empty();
+    							$('#deviceSelect').append('<option value="">Choose Device</option>');
+	    						$.each(data.body, function(i, device){
+		    						$('#deviceSelect').append('<option value="' + device.id + '">' + device.name + '</option>');
+			    				});
+                            },
+                            function(err) {
+								accessToken = null;
+								simpleStorage.deleteKey("accessToken");
+				                $('#spark-login').show();
+								login();
+								return;
+							}
+						);
+					} else {
+						go();
+					}
+				}
+
+				function login() {
+                    accessToken = simpleStorage.get("accessToken");
+                    if (!accessToken) {
+                        $('#spark-login').show();
+				        particle.login({username: $('#username').val(), password: $('#password').val()}).then(
+                            function(data) {
+					            accessToken = data.body.access_token;
+    	    					simpleStorage.set("accessToken", accessToken);
+			    	            $('#spark-login').hide();
+	    		    			loadDevice();
+		    		    	},
+                            function(err) {
+                                console.log('Could not log in.', err);
+                            }
+                        );
+                    } else {
+                        loadDevice();
+                    }
+				}
+
+				function clearMarkers() {
+					for (var i = 0; i < markersArray.length; i++ ) {
+						markersArray[i].setMap(null);
+					}
+					markersArray.length = 0;
+				}
+
+				function go() {
+					$('#deviceChooser').hide();
+                    $('#functions').show();
+					$('#map').show();
+                    $('#altitudeChart').show();
+
+                    particle.getEventStream({ deviceId: deviceId, auth: accessToken }).then(function(stream) {
+                        stream.on('event', function(data) {
+    						if (data.name == "G") {
+	    						var gpslocation = data.data.split(',');
+		    					var lat = parseFloat(gpslocation[0]);
+			    				var lon = parseFloat(gpslocation[1]);
+                                var alt = parseFloat(gpslocation[2]);
+    				    		var mylocation=new google.maps.LatLng(lat, lon);
+
+						    	$('#latlon').html(gpslocation[0] + ' : ' + gpslocation[1]);
+
+							    // clearMarkers();
+
+    							marker = new google.maps.Marker({
+	   								position: mylocation,
+	    							draggable: false,
+                                });
+
+			    				markersArray.push(marker);
+
+				    			marker.setMap(map);
+					    		map.panTo(marker.getPosition());
+                                
+                                altitudeData.push({x:data.published_at, y:alt})
+                                chart.update()
+    						}
+
+	   						console.log(data);
+	    				});
+				    });
+				}
+
+                $('#spark-login').click(login);
+
+				login();
+
+			});
+		</script>
+		<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDs0pUsnCd3K6TZ6xa9FegyLUnI0cBrhVo&callback=initMap" async defer></script>
+
+	</body>
+</html>
